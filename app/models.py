@@ -10,4 +10,4 @@ class Document(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(Text)
     content = Column(Text)
-    embedding = Column(Vector(384))
+    embedding = Column(Vector(1536))  # Assuming 1536-dimensional embeddings

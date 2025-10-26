@@ -1,23 +1,35 @@
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 from app.db import SessionLocal
 from app.models import Document
+from dotenv import load_dotenv
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+load_dotenv()
+client = OpenAI()
 
 session = SessionLocal()
 
 try:
     docs = session.query(Document).filter(Document.embedding == None).all()
-    for doc in docs:
-        embedding = model.encode(doc.content).tolist()
-        doc.embedding = embedding
+    print(f"Found {len(docs)} documents to embed.")
+
+    # 2️⃣ Generate embeddings
+    for i, doc in enumerate(docs, start=1):
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=doc.content
+        )
+        doc.embedding = response.data[0].embedding  # list of floats
+
+        if i % 100 == 0:
+            session.commit()
+            print(f"✅ Committed {i} embeddings...")
 
     session.commit()
     print("✅ All embeddings generated and saved successfully.")
 
 except Exception as e:
     session.rollback()
-    print(f"An error occurred: {e}")
+    print(f"❌ Error: {e}")
 
 finally:
     session.close()
