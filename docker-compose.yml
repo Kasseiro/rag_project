@@ -1,6 +1,6 @@
 services:
   db:
-    image: ankane/pgvector:latest   # ✅ pgvector-enabled image
+    image: ankane/pgvector:latest
     container_name: rag_postgres
     environment:
       POSTGRES_USER: user
