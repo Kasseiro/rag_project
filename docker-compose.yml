@@ -8,3 +8,14 @@ services:
       POSTGRES_DB: ragdb
     ports:
       - "5432:5432"
+
+  backend:
+    build: .
+    container_name: rag_backend
+    env_file: .env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
