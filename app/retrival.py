@@ -25,7 +25,6 @@ def retrieve_similar_docs(query: str, k: int = 3):
 
         results = session.execute(sql, {"query_embedding": query_embedding, "k": k}).fetchall()
 
-        # 3️⃣ Format results
         docs = []
         for row in results:
             docs.append({
