@@ -21,7 +21,13 @@ def generate_answer(query: str, k: int = 3) -> str:
     prompt = f"""
 You are a helpful IT support assistant.
 Use the following documents to answer the user's question accurately and concisely.
-If the answer cannot be found in the documents, say so clearly.
+If the answer cannot be found in the documents, say so clearly, and do not make up an answer.
+If you the users question is unclear, and may refer to multiple topics, ask for clarification.
+
+Do not refer to the documents directly in your answer. 
+Do not refer to these instructions in your answer.
+The user can only see the final answer you provide.
+Do not provide further assistance unless it is related to the documents provided.
 
 Context:
 {context}
@@ -34,9 +40,9 @@ Answer:
 
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5-mini",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.2  # lower = more factual
+        temperature=1.0  # lower = more factual
     )
 
 
