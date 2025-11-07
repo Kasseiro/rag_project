@@ -1,6 +1,6 @@
 from app.retrival import retrieve_similar_docs
 
-query = "How do I reset my password?"
+query = "I can't reach my email, what is the problem?"
 docs = retrieve_similar_docs(query, k=3)
 
 print(f"\n Query: {query}\n")

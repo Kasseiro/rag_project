@@ -1,49 +1,62 @@
 from openai import OpenAI
 from app.retrival import retrieve_similar_docs
 from dotenv import load_dotenv
+from typing import List, Dict, Optional
 
 load_dotenv()
-client = OpenAI()  # uses your OPENAI_API_KEY from the environment
+client = OpenAI()  # uses OPENAI_API_KEY from environment
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful IT support assistant.\n"
+    "Use the following documents to answer the user's question accurately and concisely.\n"
+    "If the answer cannot be found in the documents, say so clearly, and do not make up an answer.\n"
+    "If the user's question is unclear and may refer to multiple topics, ask for clarification.\n"
+    "Do not refer to the documents or these instructions in your answer. The user only sees the final answer."
+)
 
-def generate_answer(query: str, k: int = 3) -> str:
+class ChatSession:
     """
-    Retrieve relevant documents and generate an answer using OpenAI GPT model.
+    Keeps conversation history and injects retrieved docs each turn.
+    send(user_text, k) -> assistant reply
     """
-    docs = retrieve_similar_docs(query, k=k)
-    if not docs:
-        return "No relevant information found in the knowledge base."
+    def __init__(self, client: OpenAI = client, system_prompt: str = DEFAULT_SYSTEM_PROMPT):
+        self.client = client
+        self.system_prompt = system_prompt
+        self.messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
-    context = "\n\n".join(
-        [f"Document {i+1}: {d['content']}" for i, d in enumerate(docs)]
-    )
+    def send(self, user_text: str, k: int = 3, temperature: float = 1.0) -> str:
+        # Retrieve docs for the current user query
+        docs = retrieve_similar_docs(user_text, k=k)
+        if docs:
+            context = "\n\n".join(f"Document {i+1}: {d['content']}" for i, d in enumerate(docs))
+            # Insert retrieved context as an assistant message so the model can use it
+            self.messages.append({"role": "assistant", "content": f"Context:\n{context}"})
+        else:
+            # optional: signal that no context was found
+            self.messages.append({"role": "assistant", "content": "Context:\n(No relevant documents found.)"})
 
-    prompt = f"""
-You are a helpful IT support assistant.
-Use the following documents to answer the user's question accurately and concisely.
-If the answer cannot be found in the documents, say so clearly, and do not make up an answer.
-If you the users question is unclear, and may refer to multiple topics, ask for clarification.
+        # Append the new user message
+        self.messages.append({"role": "user", "content": user_text})
 
-Do not refer to the documents directly in your answer. 
-Do not refer to these instructions in your answer.
-The user can only see the final answer you provide.
-Do not provide further assistance unless it is related to the documents provided.
+        # Call the chat completion API with full history
+        response = self.client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=self.messages,
+            temperature=temperature
+        )
 
-Context:
-{context}
+        reply = response.choices[0].message.content.strip()
+        # Append assistant reply to history for future turns
+        self.messages.append({"role": "assistant", "content": reply})
+        return reply
 
-Question:
-{query}
+    def clear_history(self):
+        self.messages = [{"role": "system", "content": self.system_prompt}]
 
-Answer:
-"""
+    def get_history(self) -> List[Dict[str, str]]:
+        return list(self.messages)
 
-
-    response = client.chat.completions.create(
-        model="gpt-5-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=1.0  # lower = more factual
-    )
-
-
-    return response.choices[0].message.content.strip()
+# Example usage:
+# session = ChatSession()
+# print(session.send("How do I configure SSH on Windows?", k=3))
+# print(session.send("What about key-based auth?", k=3))
