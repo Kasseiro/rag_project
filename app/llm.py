@@ -2,9 +2,11 @@ from openai import OpenAI
 from app.retrival import retrieve_similar_docs
 from dotenv import load_dotenv
 from typing import List, Dict, Optional
+import os
 
 load_dotenv()
 client = OpenAI()  # uses OPENAI_API_KEY from environment
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful IT support assistant.\n"
@@ -40,7 +42,7 @@ class ChatSession:
 
         # Call the chat completion API with full history
         response = self.client.chat.completions.create(
-            model="gpt-5-mini",
+            model=OPENAI_MODEL,
             messages=self.messages,
             temperature=temperature
         )

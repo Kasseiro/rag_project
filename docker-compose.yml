@@ -1,21 +1,19 @@
 services:
   db:
-    image: ankane/pgvector:latest
-    container_name: rag_postgres
+    image: ${POSTGRES_IMAGE:-ankane/pgvector:latest}
+    container_name: ${POSTGRES_CONTAINER_NAME:-rag_postgres}
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: ragdb
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-ragdb}
 
   backend:
     build: .
-    container_name: rag_backend
+    container_name: ${BACKEND_CONTAINER_NAME:-rag_backend}
     env_file: .env
     depends_on:
       - db
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - .:/app
