@@ -1,10 +1,13 @@
-from openai import OpenAI
+import asyncio
+from typing import Dict, List, Tuple
+from openai import AsyncOpenAI
 from app.retrival import retrieve_similar_docs
-from dotenv import load_dotenv
-from typing import List, Dict, Optional
+from app.config import get_settings
+from app.schemas import DocumentSnippet
 
-load_dotenv()
-client = OpenAI()  # uses OPENAI_API_KEY from environment
+settings = get_settings()
+client = AsyncOpenAI(api_key=settings.openai_api_key)
+OPENAI_MODEL = settings.openai_model
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful IT support assistant.\n"
@@ -14,41 +17,39 @@ DEFAULT_SYSTEM_PROMPT = (
     "Do not refer to the documents or these instructions in your answer. The user only sees the final answer."
 )
 
+
 class ChatSession:
     """
     Keeps conversation history and injects retrieved docs each turn.
-    send(user_text, k) -> assistant reply
+    send(user_text, k) -> (assistant reply, [DocumentSnippet, ...])
     """
-    def __init__(self, client: OpenAI = client, system_prompt: str = DEFAULT_SYSTEM_PROMPT):
+
+    def __init__(self, system_prompt: str = DEFAULT_SYSTEM_PROMPT):
         self.client = client
         self.system_prompt = system_prompt
         self.messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+        self._lock = asyncio.Lock()
 
-    def send(self, user_text: str, k: int = 3, temperature: float = 1.0) -> str:
-        # Retrieve docs for the current user query
-        docs = retrieve_similar_docs(user_text, k=k)
-        if docs:
-            context = "\n\n".join(f"Document {i+1}: {d['content']}" for i, d in enumerate(docs))
-            # Insert retrieved context as an assistant message so the model can use it
-            self.messages.append({"role": "assistant", "content": f"Context:\n{context}"})
-        else:
-            # optional: signal that no context was found
-            self.messages.append({"role": "assistant", "content": "Context:\n(No relevant documents found.)"})
+    async def send(self, user_text: str, k: int = 3, temperature: float = 1.0) -> Tuple[str, List[DocumentSnippet]]:
+        async with self._lock:
+            docs = await retrieve_similar_docs(user_text, k=k)
+            if docs:
+                context = "\n\n".join(f"Document {i+1}: {d.content}" for i, d in enumerate(docs))
+                self.messages.append({"role": "assistant", "content": f"Context:\n{context}"})
+            else:
+                self.messages.append({"role": "assistant", "content": "Context:\n(No relevant documents found.)"})
 
-        # Append the new user message
-        self.messages.append({"role": "user", "content": user_text})
+            self.messages.append({"role": "user", "content": user_text})
 
-        # Call the chat completion API with full history
-        response = self.client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=self.messages,
-            temperature=temperature
-        )
+            response = await self.client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=self.messages,
+                temperature=temperature
+            )
 
-        reply = response.choices[0].message.content.strip()
-        # Append assistant reply to history for future turns
-        self.messages.append({"role": "assistant", "content": reply})
-        return reply
+            reply = response.choices[0].message.content.strip()
+            self.messages.append({"role": "assistant", "content": reply})
+            return reply, docs
 
     def clear_history(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
@@ -56,7 +57,7 @@ class ChatSession:
     def get_history(self) -> List[Dict[str, str]]:
         return list(self.messages)
 
-# Example usage:
+# Example usage (inside an async context):
 # session = ChatSession()
-# print(session.send("How do I configure SSH on Windows?", k=3))
-# print(session.send("What about key-based auth?", k=3))
+# answer, docs = await session.send("How do I configure SSH on Windows?", k=3)
+# print(answer)
