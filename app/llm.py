@@ -1,4 +1,5 @@
-from typing import List, Dict
+import os
+from typing import Dict, List
 
 from dotenv import load_dotenv
 from pydantic_ai import Agent, RunContext
@@ -6,6 +7,9 @@ from pydantic_ai import Agent, RunContext
 from app.retrival import retrieve_similar_docs
 
 load_dotenv()
+
+_raw_model = os.getenv("OPENAI_MODEL", "openai:gpt-5-mini")
+MODEL_ID = _raw_model if ":" in _raw_model else f"openai:{_raw_model}"
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful IT support assistant.\n"
@@ -19,23 +23,14 @@ DEFAULT_SYSTEM_PROMPT = (
 
 # Global pydantic-ai agent for the whole app
 agent = Agent(
-    "openai:gpt-5-mini",  # or "openai:gpt-4.1-mini", etc.
+    MODEL_ID,
     system_prompt=DEFAULT_SYSTEM_PROMPT,
 )
 
 
 @agent.tool
 def retrieve_documents(ctx: RunContext[None], search_query: str, k: int = 3) -> str:
-    """Search the internal knowledge base and return relevant documents.
-
-    Args:
-        search_query: Natural-language search phrase.
-        k: Maximum number of documents to retrieve.
-
-    Returns:
-        A formatted string with the most relevant documents.
-        If nothing is found, returns a short message saying so.
-    """
+    """Search the internal knowledge base and return relevant documents."""
     docs = retrieve_similar_docs(search_query, k=k)
     if not docs:
         return "No relevant documents found for this query."
@@ -50,11 +45,7 @@ def retrieve_documents(ctx: RunContext[None], search_query: str, k: int = 3) -> 
 
 
 class ChatSession:
-    """Simple wrapper to keep a short conversation history per user.
-
-    The agent itself is stateless and global; we keep the last N turns
-    and prepend them to the user prompt so the model sees some context.
-    """
+    """Simple wrapper to keep a short conversation history per user."""
 
     def __init__(
         self,
