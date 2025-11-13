@@ -1,3 +1,6 @@
+pydantic-ai
+python-dotenv~=1.2.1
+dotenv~=0.9.9
 starlette
 SQLAlchemy~=2.0.44
 openai~=2.6.1
