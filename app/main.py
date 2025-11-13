@@ -1,14 +1,16 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from starlette.responses import HTMLResponse
 from app.llm import ChatSession
+from app.schemas import AskRequest, AskResponse, ClearResponse
 
 app = FastAPI(title="RAG System")
 
 # persistent session to preserve conversation history
 session = ChatSession()
 
+
 @app.get("/", response_class=HTMLResponse)
-def index():
+async def index():
     html = """
 <!doctype html>
 <html lang="en">
@@ -50,6 +52,20 @@ def index():
         historyEl.scrollTop = historyEl.scrollHeight;
       }
 
+      async function sendQuery(q) {
+        const res = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q })
+        });
+        if (!res.ok) {
+          appendTurn('assistant', 'Error: ' + res.statusText);
+        } else {
+          const data = await res.json();
+          appendTurn('assistant', data.answer || '(no answer)');
+        }
+      }
+
       sendBtn.addEventListener('click', async () => {
         const q = queryEl.value.trim();
         if (!q) return;
@@ -57,13 +73,7 @@ def index():
         queryEl.value = '';
         sendBtn.disabled = true;
         try {
-          const res = await fetch('/ask?query=' + encodeURIComponent(q));
-          if (!res.ok) {
-            appendTurn('assistant', 'Error: ' + res.statusText);
-          } else {
-            const data = await res.json();
-            appendTurn('assistant', data.answer || '(no answer)');
-          }
+          await sendQuery(q);
         } catch (err) {
           appendTurn('assistant', 'Network error');
         } finally {
@@ -88,7 +98,6 @@ def index():
         }
       });
 
-      // allow Enter to send
       queryEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -101,12 +110,18 @@ def index():
 """
     return HTMLResponse(content=html)
 
-@app.get("/ask")
-def ask(query: str = Query(..., description="Your question")):
-    answer = session.send(query)
-    return {"query": query, "answer": answer}
 
-@app.post("/clear")
-def clear_history():
+@app.post("/ask", response_model=AskResponse)
+async def ask(payload: AskRequest):
+    answer, documents = await session.send(
+        payload.query,
+        k=payload.top_k,
+        temperature=payload.temperature
+    )
+    return AskResponse(query=payload.query, answer=answer, documents=documents)
+
+
+@app.post("/clear", response_model=ClearResponse)
+async def clear_history():
     session.clear_history()
-    return {"status": "ok", "message": "conversation history cleared"}
+    return ClearResponse(status="ok", message="conversation history cleared")

@@ -1,77 +1,57 @@
-from typing import Any, Dict, List
+from typing import List
 
-from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 from sqlalchemy import text
 
-from app.db import SessionLocal
+from app.config import get_settings
+from app.db import AsyncSessionLocal
+from app.schemas import DocumentSnippet
 
-load_dotenv()
+settings = get_settings()
+client = AsyncOpenAI(api_key=settings.openai_api_key)
+EMBEDDING_MODEL = settings.openai_embedding_model
 
-# Single global client for embeddings
-_client = OpenAI()
 
+async def retrieve_similar_docs(query: str, k: int = 3) -> List[DocumentSnippet]:
+    """Retrieve the top-k most similar documents from Postgres using pgvector."""
+    async with AsyncSessionLocal() as session:
+        try:
+            embedding_response = await client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=query,
+            )
+            query_embedding = embedding_response.data[0].embedding
 
-def retrieve_similar_docs(query: str, k: int = 3) -> List[Dict[str, Any]]:
-    """Retrieve the top-k most similar documents from Postgres using pgvector.
-
-    Args:
-        query: Natural-language search query.
-        k: Number of documents to return.
-
-    Returns:
-        A list of dicts: {"id", "title", "content", "distance"}.
-        Returns an empty list on error.
-    """
-    session = SessionLocal()
-    try:
-        # Create embedding for the query
-        embedding_resp = _client.embeddings.create(
-            model="text-embedding-3-small",
-            input=query,
-        )
-        query_embedding = embedding_resp.data[0].embedding
-
-        # Vector similarity search
-        sql = text(
-            """
-            SELECT
-                id,
-                title,
-                content,
-                embedding <-> (:query_embedding)::vector AS distance
-            FROM documents
-            ORDER BY distance ASC
-            LIMIT :k;
-            """
-        )
-
-        result = session.execute(
-            sql,
-            {
-                "query_embedding": query_embedding,
-                "k": k,
-            },
-        )
-
-        rows = result.fetchall()
-        docs: List[Dict[str, Any]] = []
-        for row in rows:
-            docs.append(
-                {
-                    "id": row.id,
-                    "title": getattr(row, "title", None),
-                    "content": getattr(row, "content", None),
-                    "distance": getattr(row, "distance", None),
-                }
+            sql = text(
+                """
+                SELECT
+                    id,
+                    title,
+                    content,
+                    embedding <-> (:query_embedding)::vector AS distance
+                FROM documents
+                ORDER BY distance ASC
+                LIMIT :k;
+                """
             )
 
-        return docs
+            result = await session.execute(
+                sql, {"query_embedding": query_embedding, "k": k}
+            )
+            rows = result.fetchall()
 
-    except Exception as exc:
-        # In a real app, replace this with proper logging
-        print(f"[retrieve_similar_docs] Error while searching docs: {exc}")
-        return []
+            docs = [
+                DocumentSnippet(
+                    id=row.id,
+                    title=row.title,
+                    content=row.content,
+                    distance=float(row.distance or 0.0),
+                )
+                for row in rows
+            ]
+            return docs
 
-    finally:
-        session.close()
+        except Exception as exc:
+            # In a real app we would log this with structured logging
+            print(f"[retrieve_similar_docs] Error: {exc}")
+            return []
