@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from starlette.responses import HTMLResponse
 from app.llm import ChatSession
+from app.schemas import AskRequest, AskResponse, ClearResponse
 
 app = FastAPI(title="RAG System")
 
@@ -57,7 +58,11 @@ def index():
         queryEl.value = '';
         sendBtn.disabled = true;
         try {
-          const res = await fetch('/ask?query=' + encodeURIComponent(q));
+          const res = await fetch('/ask', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ query: q })
+          });
           if (!res.ok) {
             appendTurn('assistant', 'Error: ' + res.statusText);
           } else {
@@ -101,12 +106,16 @@ def index():
 """
     return HTMLResponse(content=html)
 
-@app.get("/ask")
-def ask(query: str = Query(..., description="Your question")):
-    answer = session.send(query)
-    return {"query": query, "answer": answer}
+@app.post("/ask", response_model=AskResponse)
+def ask(payload: AskRequest):
+    answer, documents = session.send(
+        payload.query,
+        k=payload.top_k,
+        temperature=payload.temperature
+    )
+    return AskResponse(query=payload.query, answer=answer, documents=documents)
 
-@app.post("/clear")
+@app.post("/clear", response_model=ClearResponse)
 def clear_history():
     session.clear_history()
-    return {"status": "ok", "message": "conversation history cleared"}
+    return ClearResponse(status="ok", message="conversation history cleared")

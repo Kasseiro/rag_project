@@ -1,10 +1,12 @@
 from openai import OpenAI
+from typing import List, Dict, Tuple
 from app.retrival import retrieve_similar_docs
-from dotenv import load_dotenv
-from typing import List, Dict, Optional
+from app.config import get_settings
+from app.schemas import DocumentSnippet
 
-load_dotenv()
-client = OpenAI()  # uses OPENAI_API_KEY from environment
+settings = get_settings()
+client = OpenAI(api_key=settings.openai_api_key)
+OPENAI_MODEL = settings.openai_model
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful IT support assistant.\n"
@@ -17,18 +19,18 @@ DEFAULT_SYSTEM_PROMPT = (
 class ChatSession:
     """
     Keeps conversation history and injects retrieved docs each turn.
-    send(user_text, k) -> assistant reply
+    send(user_text, k) -> (assistant reply, [DocumentSnippet, ...])
     """
     def __init__(self, client: OpenAI = client, system_prompt: str = DEFAULT_SYSTEM_PROMPT):
         self.client = client
         self.system_prompt = system_prompt
         self.messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
-    def send(self, user_text: str, k: int = 3, temperature: float = 1.0) -> str:
+    def send(self, user_text: str, k: int = 3, temperature: float = 1.0) -> Tuple[str, List[DocumentSnippet]]:
         # Retrieve docs for the current user query
-        docs = retrieve_similar_docs(user_text, k=k)
+        docs: List[DocumentSnippet] = retrieve_similar_docs(user_text, k=k)
         if docs:
-            context = "\n\n".join(f"Document {i+1}: {d['content']}" for i, d in enumerate(docs))
+            context = "\n\n".join(f"Document {i+1}: {d.content}" for i, d in enumerate(docs))
             # Insert retrieved context as an assistant message so the model can use it
             self.messages.append({"role": "assistant", "content": f"Context:\n{context}"})
         else:
@@ -40,7 +42,7 @@ class ChatSession:
 
         # Call the chat completion API with full history
         response = self.client.chat.completions.create(
-            model="gpt-5-mini",
+            model=OPENAI_MODEL,
             messages=self.messages,
             temperature=temperature
         )
@@ -48,7 +50,7 @@ class ChatSession:
         reply = response.choices[0].message.content.strip()
         # Append assistant reply to history for future turns
         self.messages.append({"role": "assistant", "content": reply})
-        return reply
+        return reply, docs
 
     def clear_history(self):
         self.messages = [{"role": "system", "content": self.system_prompt}]
@@ -58,5 +60,5 @@ class ChatSession:
 
 # Example usage:
 # session = ChatSession()
-# print(session.send("How do I configure SSH on Windows?", k=3))
-# print(session.send("What about key-based auth?", k=3))
+# answer, docs = session.send("How do I configure SSH on Windows?", k=3)
+# print(answer)
