@@ -31,6 +31,10 @@ def retrieve_similar_docs(query: str, k: int = 3) -> List[Dict[str, Any]]:
             input=query,
         )
         query_embedding = embedding_resp.data[0].embedding
+        # Serialize the embedding as a Postgres vector literal like
+        # `[0.1,0.2,...]` because some DB drivers serialize Python lists
+        # as Postgres arrays (`{...}`) which do not cast to `vector`.
+        query_embedding_param = f"[{','.join(map(str, query_embedding))}]"
 
         # Vector similarity search
         sql = text(
@@ -49,7 +53,7 @@ def retrieve_similar_docs(query: str, k: int = 3) -> List[Dict[str, Any]]:
         result = session.execute(
             sql,
             {
-                "query_embedding": query_embedding,
+                "query_embedding": query_embedding_param,
                 "k": k,
             },
         )
