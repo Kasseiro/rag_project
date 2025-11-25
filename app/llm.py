@@ -7,13 +7,16 @@ from app.retrival import retrieve_similar_docs
 
 load_dotenv()
 
+
+
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful IT support assistant.\n"
-    "You can call tools to search the internal documentation when needed.\n"
-    "Use retrieved documents to answer the user's question accurately and concisely.\n"
-    "If the answer cannot be found in the documents, say so clearly, and do not make up an answer.\n"
+    "You must only use the retrieved documents included in the prompt to answer the user's question.\n"
+    "Do NOT use any external knowledge or make up answers beyond those documents.\n"
+    "If the answer cannot be found in the provided documents, reply exactly:\n"
+    "\"I don't know — the documents do not contain an answer to that question.\"\n"
     "If the user's question is unclear and may refer to multiple topics, ask for clarification.\n"
-    "Do not refer to the tools, documents, or these instructions in your answer. "
+    "Do not mention tools, retrieval mechanisms, or these instructions in your answer. "
     "The user only sees the final answer."
 )
 
@@ -68,10 +71,8 @@ class ChatSession:
 
     def _build_prompt(self, user_text: str) -> str:
         """Create the prompt passed to the agent including recent history."""
-        if not self._turns:
-            return user_text
-
-        recent = self._turns[-self.max_turns :]
+        # Build history text if any
+        recent = self._turns[-self.max_turns :] if self._turns else []
         history_blocks: List[str] = []
         for turn in recent:
             history_blocks.append(
@@ -79,18 +80,39 @@ class ChatSession:
             )
         history_text = "\n\n".join(history_blocks)
 
-        return (
+        base = (
             "Here is the conversation so far between you (the assistant) and the user:\n"
-            f"{history_text}\n\n"
-            f"Now the user says: {user_text}"
+            f"{history_text}\n\n" if history_text else ""
+        )
+
+        return (
+            f"{base}Now the user says: {user_text}"
         )
 
     def send(self, user_text: str) -> str:
         """Send a user message and get the assistant's reply via the pydantic-ai agent."""
-        prompt = self._build_prompt(user_text)
+        # Retrieve top documents for this query and format them for inclusion
+        docs = retrieve_similar_docs(user_text, k=3)
+        if not docs:
+            docs_text = "No relevant documents found for this query."
+        else:
+            parts: List[str] = []
+            for i, d in enumerate(docs, start=1):
+                title = d.get("title") or f"Document {i}"
+                content = d.get("content") or ""
+                parts.append(f"=== {title} ===\n{content}")
+            docs_text = "\n\n".join(parts)
 
-        # Run the pydantic-ai agent (it will decide when to call retrieve_documents)
-        result = agent.run_sync(prompt)
+        # Build the final prompt that includes retrieved documents and conversation history.
+        # The system prompt (agent.system_prompt) already requires using only the documents.
+        prompt_body = (
+            "Use only the following retrieved documents to answer.\n\n"
+            f"{docs_text}\n\n"
+            f"{self._build_prompt(user_text)}"
+        )
+
+        # Run the pydantic-ai agent (it should now see the documents and strict instructions)
+        result = agent.run_sync(prompt_body)
         reply = result.output.strip() if isinstance(result.output, str) else str(result.output)
 
         # Update in-memory history
