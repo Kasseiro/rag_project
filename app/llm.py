@@ -29,34 +29,28 @@ agent = Agent(
 
 @agent.tool
 def retrieve_documents(ctx: RunContext[None], search_query: str, k: int = 3) -> str:
-    """Search the internal knowledge base and return relevant documents.
+    """Find and return top-k docs as a simple formatted string.
 
-    Args:
-        search_query: Natural-language search phrase.
-        k: Maximum number of documents to retrieve.
-
-    Returns:
-        A formatted string with the most relevant documents.
-        If nothing is found, returns a short message saying so.
+    Returns a short message if no docs are found.
     """
     docs = retrieve_similar_docs(search_query, k=k)
     if not docs:
         return "No relevant documents found for this query."
 
-    formatted_parts: List[str] = []
+    parts: List[str] = []
     for i, d in enumerate(docs, start=1):
         title = d.get("title") or f"Document {i}"
         content = d.get("content") or ""
-        formatted_parts.append(f"=== {title} ===\n{content}")
+        parts.append(f"=== {title} ===\n{content}")
 
-    return "\n\n".join(formatted_parts)
+    return "\n\n".join(parts)
 
 
 class ChatSession:
-    """Simple wrapper to keep a short conversation history per user.
+    """Keep a short recent chat history for a user.
 
-    The agent itself is stateless and global; we keep the last N turns
-    and prepend them to the user prompt so the model sees some context.
+    The agent is stateless. We keep the last N turns and prepend them
+    so the model sees context.
     """
 
     def __init__(
@@ -66,7 +60,7 @@ class ChatSession:
     ) -> None:
         self.system_prompt = system_prompt
         self.max_turns = max_turns
-        # list of {"user": str, "assistant": str}
+        # history: list of {"user": str, "assistant": str}
         self._turns: List[Dict[str, str]] = []
 
     def _build_prompt(self, user_text: str) -> str:
@@ -111,7 +105,7 @@ class ChatSession:
             f"{self._build_prompt(user_text)}"
         )
 
-        # Run the pydantic-ai agent (it should now see the documents and strict instructions)
+        # Run the pydantic-ai agent
         result = agent.run_sync(prompt_body)
         reply = result.output.strip() if isinstance(result.output, str) else str(result.output)
 

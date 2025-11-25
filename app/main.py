@@ -88,7 +88,7 @@ def index():
         }
       });
 
-      // allow Enter to send
+      // send on Enter key
       queryEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

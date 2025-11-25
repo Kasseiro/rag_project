@@ -13,27 +13,25 @@ _client = OpenAI()
 
 
 def retrieve_similar_docs(query: str, k: int = 3) -> List[Dict[str, Any]]:
-    """Retrieve the top-k most similar documents from Postgres using pgvector.
+    """Return top-k similar documents from Postgres (pgvector).
 
     Args:
-        query: Natural-language search query.
-        k: Number of documents to return.
+        query: user query text
+        k: number of docs to return
 
     Returns:
-        A list of dicts: {"id", "title", "content", "distance"}.
-        Returns an empty list on error.
+        list of dicts with keys: {"id", "title", "content", "distance"}.
+        Returns [] on error.
     """
     session = SessionLocal()
     try:
-        # Create embedding for the query
+        # create embedding for the query
         embedding_resp = _client.embeddings.create(
             model="text-embedding-3-small",
             input=query,
         )
         query_embedding = embedding_resp.data[0].embedding
-        # Serialize the embedding as a Postgres vector literal like
-        # `[0.1,0.2,...]` because some DB drivers serialize Python lists
-        # as Postgres arrays (`{...}`) which do not cast to `vector`.
+        # serialize to Postgres vector literal "[0.1,0.2,...]"
         query_embedding_param = f"[{','.join(map(str, query_embedding))}]"
 
         # Vector similarity search

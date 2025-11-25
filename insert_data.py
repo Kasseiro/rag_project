@@ -10,7 +10,6 @@ for _, row in df.iterrows():
     doc = Document(title=row['title'], content=row['content'])
     session.add(doc)
 
-
 session.commit()
 session.close()
 print("Data inserted successfully.")

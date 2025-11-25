@@ -12,24 +12,24 @@ try:
     docs = session.query(Document).filter(Document.embedding == None).all()
     print(f"Found {len(docs)} documents to embed.")
 
-    # 2️⃣ Generate embeddings
     for i, doc in enumerate(docs, start=1):
         response = client.embeddings.create(
             model="text-embedding-3-small",
             input=doc.content
         )
-        doc.embedding = response.data[0].embedding  # list of floats
+        # save embedding (list of floats)
+        doc.embedding = response.data[0].embedding
 
         if i % 100 == 0:
             session.commit()
-            print(f"✅ Committed {i} embeddings...")
+            print(f"Committed {i} embeddings...")
 
     session.commit()
-    print("✅ All embeddings generated and saved successfully.")
+    print("All embeddings generated and saved.")
 
 except Exception as e:
     session.rollback()
-    print(f"❌ Error: {e}")
+    print(f"Error: {e}")
 
 finally:
     session.close()
